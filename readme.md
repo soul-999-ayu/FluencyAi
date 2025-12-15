@@ -37,7 +37,7 @@ Unlike standard chatbots that only read text, FluencyAI listens to your **real v
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/soul-999-ayu/FluencyAI.git](https://github.com/yourusername/FluencyAI.git)
+    git clone https://github.com/soul-999-ayu/FluencyAI.git
     cd FluencyAI
     ```
 
