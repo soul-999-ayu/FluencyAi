@@ -1,46 +1,29 @@
 // api/tts.js
-const { MsEdgeTTS, OUTPUT_FORMAT } = require('msedge-tts');
+const googleTTS = require('google-tts-api');
 
 module.exports = async function handler(req, res) {
-  // 1. Allow CORS (Optional, but good for debugging)
   res.setHeader('Access-Control-Allow-Origin', '*');
-
-  // 2. Only allow POST
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  const { text, voice } = req.body;
-
-  if (!text) {
-    return res.status(400).json({ error: 'Text is required' });
-  }
-
-  console.log(`Generating TTS for: "${text.substring(0, 20)}..."`);
+  
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  const { text } = req.body;
 
   try {
-    // 3. Initialize TTS
-    const tts = new MsEdgeTTS();
-    
-    // 4. Set Metadata (Using hardcoded string to avoid import issues)
-    await tts.setMetadata(
-      voice || "en-US-AriaNeural", 
-      "audio-24khz-96kbitrate-mono-mp3"
-    );
+    // Google TTS returns a URL to the audio file
+    const url = googleTTS.getAudioUrl(text, {
+      lang: 'en',
+      slow: false,
+      host: 'https://translate.google.com',
+    });
 
-    // 5. Create Stream
-    const readable = await tts.toStream(text);
+    // Fetch that audio and send it back to the user (Proxy)
+    const audioResponse = await fetch(url);
+    const arrayBuffer = await audioResponse.arrayBuffer();
     
-    // 6. Pipe to response
     res.setHeader('Content-Type', 'audio/mp3');
-    readable.pipe(res);
+    res.send(Buffer.from(arrayBuffer));
 
   } catch (error) {
-    console.error("CRITICAL TTS ERROR:", error);
-    // Send detailed error back to browser for easier debugging
-    res.status(500).json({ 
-        error: 'TTS Generation Failed', 
-        details: error.message 
-    });
+    console.error("Google TTS Error:", error);
+    res.status(500).json({ error: error.message });
   }
 };

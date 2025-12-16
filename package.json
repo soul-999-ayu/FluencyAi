@@ -2,6 +2,6 @@
   "name": "fluency-ai",
   "version": "1.0.0",
   "dependencies": {
-    "msedge-tts": "^2.0.2"
+    "google-tts-api": "^2.0.2"
   }
 }
