@@ -642,8 +642,17 @@
         }
         
         if (sender === 'ai' && !isError) {
-            const safeText = text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            // --- FIX START ---
+            // 1. Escape Quotes: So ' or " don't break the HTML
+            // 2. Remove Newlines: Replace \n with space so it doesn't break the JS
+            const safeText = text
+                .replace(/'/g, "\\'")
+                .replace(/"/g, '&quot;')
+                .replace(/\n/g, ' ')  // <--- This fixes the "unescaped line break" error
+                .replace(/\r/g, ''); 
+            
             extraControls = `<button onclick="speakText('${safeText}')" class="mt-2 text-indigo-200 hover:text-white text-xs flex items-center gap-1 audio-btn"><i class="fa-solid fa-volume-high"></i> Replay</button>`;
+            // --- FIX END ---
         }
 
         div.innerHTML = `<div class="${sender === 'user' ? 'bg-indigo-600 text-white' : (isError ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200')} px-4 py-3 rounded-2xl max-w-[85%] shadow-sm text-sm">
