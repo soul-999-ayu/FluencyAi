@@ -358,22 +358,47 @@
         alert("Keys Saved!");
     };
 
+    // --- UPDATED BACKUP FUNCTION ---
     window.performBackup = async () => {
         const pass = document.getElementById('backupPass').value;
         const fname = document.getElementById('backupFilename').value || 'fluency_backup';
         if(!pass) return alert("Please enter a password");
+        
+        // 1. Save current LocalStorage state
         saveState(); 
-        const backupObj = { ...appState, timestamp: Date.now() };
+
+        // 2. Fetch all chats from IndexedDB
+        const getAllChats = () => new Promise((resolve, reject) => {
+                if(!db) return resolve([]);
+                const tx = db.transaction(['chats'], 'readonly');
+                const req = tx.objectStore('chats').getAll();
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+        });
+
         try {
+            const chats = await getAllChats();
+            
+            // 3. Create full backup object (Settings + Chats)
+            const backupObj = { 
+                ...appState, 
+                chats: chats, 
+                timestamp: Date.now() 
+            };
+
             const encrypted = await encryptData(backupObj, pass);
             const blob = new Blob([encrypted], {type: "text/plain"});
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
             a.download = `${fname}.fai`;
             a.click();
-        } catch(e) { alert("Backup failed: " + e.message); }
+        } catch(e) { 
+            console.error(e);
+            alert("Backup failed: " + e.message); 
+        }
     };
 
+    // --- UPDATED RESTORE FUNCTION ---
     window.performRestore = async () => {
         const file = document.getElementById('restoreFile').files[0];
         const pass = document.getElementById('restorePass').value;
@@ -382,31 +407,57 @@
         const reader = new FileReader();
         reader.onload = async (e) => {
             try {
+                // 1. Decrypt
                 const restoredState = await decryptData(e.target.result, pass);
+                
+                // 2. Restore LocalStorage Settings
                 if(restoredState.apiKeys) localStorage.setItem('fluency_api_keys', JSON.stringify(restoredState.apiKeys));
                 if(restoredState.level !== undefined) localStorage.setItem('user_level', restoredState.level);
                 if(restoredState.streak !== undefined) localStorage.setItem('user_streak', restoredState.streak);
                 if(restoredState.lastPractice !== undefined) localStorage.setItem('last_practice_date', restoredState.lastPractice);
                 
-                if(restoredState.dailyTopics && restoredState.dailyTopics.length > 0) {
-                    localStorage.setItem('daily_topics_' + todayStr, JSON.stringify(restoredState.dailyTopics));
-                }
-                if(restoredState.completedTopics) {
-                    localStorage.setItem('completed_topics_' + todayStr, JSON.stringify(restoredState.completedTopics));
-                }
+                if(restoredState.dailyTopics) localStorage.setItem('daily_topics_' + todayStr, JSON.stringify(restoredState.dailyTopics));
+                if(restoredState.completedTopics) localStorage.setItem('completed_topics_' + todayStr, JSON.stringify(restoredState.completedTopics));
 
-                appState.apiKeys = restoredState.apiKeys || appState.apiKeys;
-                appState.level = restoredState.level || 1;
-                appState.streak = restoredState.streak || 0;
-                appState.lastPractice = restoredState.lastPractice || '';
-                appState.dailyTopics = restoredState.dailyTopics || [];
-                appState.completedTopics = restoredState.completedTopics || [];
+                // 3. Update App State Memory
+                appState = { ...appState, ...restoredState };
+                // Ensure chats is not put into appState as it lives in DB
+                delete appState.chats; 
+
+                // 4. Restore Chats to IndexedDB
+                if(restoredState.chats && Array.isArray(restoredState.chats) && db) {
+                    const tx = db.transaction(['chats'], 'readwrite');
+                    const store = tx.objectStore('chats');
+                    
+                    // Optional: Clear existing chats before restoring? 
+                    // Uncomment the next line if you want to wipe current chats before restoring
+                    // store.clear(); 
+                    
+                    restoredState.chats.forEach(msg => {
+                        // Remove internal ID so DB generates a new one to avoid collisions
+                        delete msg.id; 
+                        store.add(msg);
+                    });
+                    
+                    // Wait for transaction to complete
+                    await new Promise((resolve) => {
+                        tx.oncomplete = resolve;
+                    });
+                }
                 
+                // 5. Refresh UI
                 updateStatsUI();
                 renderTopicsList();
+                
+                // If we are currently looking at a topic, refresh the chat view
+                if(currentTopicIndex !== -1) selectTopic(currentTopicIndex);
+
                 alert("Restore Successful!");
                 document.getElementById('settingsModal').classList.add('hidden');
-            } catch(err) { alert("Restore Failed: Incorrect Password or Corrupt File."); }
+            } catch(err) { 
+                console.error(err);
+                alert("Restore Failed: Incorrect Password or Corrupt File."); 
+            }
         };
         reader.readAsText(file);
     };
@@ -670,7 +721,40 @@
         renderKeyInputs();
     });
     document.getElementById('refreshTopicsBtn').addEventListener('click', () => confirm("Refresh?") && generateDailyTopics());
-    document.getElementById('bonusTopicBtn').addEventListener('click', () => { appState.dailyTopics.push("Bonus Topic"); renderTopicsList(); });
+    document.getElementById('bonusTopicBtn').addEventListener('click', async () => { 
+    const btn = document.getElementById('bonusTopicBtn');
+    const originalText = btn.innerText;
+    
+    // UI Loading State
+    btn.innerText = "Generating...";
+    btn.disabled = true;
+    btn.classList.add('opacity-50', 'cursor-wait');
+
+    try {
+        const model = await getWorkingModel();
+        const levelContext = appState.level < 5 ? "Beginner" : appState.level < 15 ? "Intermediate" : "Advanced";
+        
+        // Ask AI for ONE new topic
+        const prompt = `Generate 1 unique, fun English conversation topic for a ${levelContext} student. Return ONLY the topic text. No "Here is a topic:" prefix.`;
+        
+        const result = await model.generateContent(prompt);
+        const newTopic = result.response.text().trim();
+
+        if (newTopic) {
+            appState.dailyTopics.push(newTopic);
+            saveState(); // Save to local storage
+            renderTopicsList(); // Refresh the list
+        }
+    } catch (error) {
+        alert("Failed to generate bonus topic. Check API Key.");
+        console.error(error);
+    } finally {
+        // Reset Button
+        btn.innerText = originalText;
+        btn.disabled = false;
+        btn.classList.remove('opacity-50', 'cursor-wait');
+    }
+});
     
     const s = document.createElement('style');
     s.textContent = `.animate-fade-in { animation: fadeIn 0.4s ease-out forwards; opacity: 0; transform: translateY(10px); } @keyframes fadeIn { to { opacity: 1; transform: translateY(0); } }`;
