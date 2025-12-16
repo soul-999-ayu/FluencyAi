@@ -4,8 +4,7 @@
 
 Unlike standard chatbots that only read text, FluencyAI listens to your **real voice recording**, analyzes your tone and pronunciation, and provides specific feedback using Google's multimodal Gemini models.
 
-![FluencyAI Dashboard](screenshots/dashboard-preview.png)
-*(Add your screenshot here)*
+![FluencyAI Dashboard](screenshots/screenshot.png)
 
 ## ✨ Key Features
 
@@ -81,4 +80,4 @@ This project is open-source and available under the [MIT License](LICENSE).
 
 ---
 
-*Built with ❤️ by [Your Name] using Google Gemini.*
+*Built with ❤️ by Ayu Kashyap using Google Gemini API.*
