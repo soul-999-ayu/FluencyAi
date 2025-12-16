@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/svg+xml" href="icon/icon.svg">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FluencyAI - Daily Streak Mode</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script type="importmap">
+      {
+        "imports": {
+          "@google/generative-ai": "https://esm.run/@google/generative-ai"
+        }
+      }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+        }
+        /* Mobile Bottom Bar specific glass effect */
+        .mobile-glass-bar {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(16px);
+            border-top: 1px solid rgba(226, 232, 240, 0.8);
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.05);
+        }
+        .pulse-recording {
+            animation: pulse-red 1.5s infinite;
+        }
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(225, 29, 72, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(225, 29, 72, 0); }
+        }
+        .topic-card {
+            transition: all 0.2s ease;
+        }
+        .topic-card:hover {
+            transform: translateY(-2px);
+        }
+        .topic-active {
+            border-left: 4px solid #4f46e5;
+            background-color: #f5f3ff;
+        }
+        .topic-done {
+            opacity: 0.6;
+            background-color: #f0fdf4;
+            border-left: 4px solid #22c55e;
+        }
+        /* Hide scrollbar for clean look */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 via-indigo-50 to-blue-50 min-h-screen text-slate-800 pb-32 lg:pb-0">
+
+    <nav class="w-full glass-panel sticky top-0 z-50 px-4 md:px-6 py-3 md:py-4 flex justify-between items-center shadow-sm">
+        <div class="flex items-center gap-2">
+            <i class="fa-solid fa-fire text-orange-500 text-xl md:text-2xl"></i>
+            <span class="text-lg md:text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600">FluencyAI</span>
+            <span class="text-[10px] md:text-xs font-mono bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-200" id="levelBadge">Lvl 1</span>
+        </div>
+        <button id="settingsBtn" class="p-2 text-slate-500 hover:text-indigo-600 transition-colors">
+            <i class="fa-solid fa-gear text-lg"></i>
+        </button>
+    </nav>
+
+    <main class="max-w-6xl mx-auto px-4 py-6 md:py-8 grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+        
+        <div class="lg:col-span-1 space-y-4 md:space-y-6">
+            <div class="glass-panel rounded-2xl p-4 md:p-6 shadow-sm flex justify-between items-center">
+                <div class="text-center w-1/2">
+                    <div class="text-2xl md:text-3xl font-bold text-orange-500 flex items-center gap-1 justify-center">
+                        <span id="streakCount">0</span> <i class="fa-solid fa-fire text-sm"></i>
+                    </div>
+                    <div class="text-[10px] md:text-xs text-slate-500 uppercase font-semibold mt-1">Day Streak</div>
+                </div>
+                <div class="h-10 w-px bg-slate-200"></div>
+                <div class="text-center w-1/2">
+                    <div class="text-2xl md:text-3xl font-bold text-indigo-600" id="completedCount">0/5</div>
+                    <div class="text-[10px] md:text-xs text-slate-500 uppercase font-semibold mt-1">Today's Goal</div>
+                </div>
+            </div>
+
+            <div class="glass-panel rounded-2xl p-4 md:p-5 shadow-sm">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-slate-700 text-sm md:text-base">Today's Workout</h3>
+                    <button id="refreshTopicsBtn" class="text-xs text-slate-400 hover:text-indigo-600 flex items-center gap-1"><i class="fa-solid fa-rotate"></i> Refresh</button>
+                </div>
+                
+                <div id="topicsList" class="space-y-3">
+                    <div class="text-center py-8 text-slate-400 text-sm">
+                        <i class="fa-solid fa-spinner fa-spin mb-2"></i><br>Loading Daily Plan...
+                    </div>
+                </div>
+                
+                <button id="bonusTopicBtn" class="w-full mt-4 py-3 text-sm text-indigo-600 border border-indigo-200 rounded-xl hover:bg-indigo-50 transition-colors hidden font-medium">
+                    + Add Bonus Topic
+                </button>
+            </div>
+        </div>
+
+        <div class="lg:col-span-2 space-y-4 md:space-y-6" id="practiceArea">
+            
+            <div class="glass-panel rounded-2xl p-5 md:p-6 shadow-sm border-l-4 border-indigo-500">
+                <h2 class="text-xs font-bold text-indigo-600 uppercase tracking-wide mb-1">Current Topic</h2>
+                <h1 id="activeTopicText" class="text-lg md:text-xl font-bold text-slate-800 leading-snug">Select a topic above to start practicing.</h1>
+            </div>
+
+            <div id="chatContainer" class="glass-panel rounded-2xl p-4 md:p-6 shadow-sm h-[50vh] lg:h-[500px] overflow-y-auto space-y-6 bg-white/60 scroll-smooth relative no-scrollbar">
+                <div class="text-center text-slate-400 py-20 md:py-32 flex flex-col items-center gap-4">
+                    <div class="w-14 h-14 md:w-16 md:h-16 bg-slate-100 rounded-full flex items-center justify-center">
+                        <i class="fa-solid fa-microphone-lines text-2xl opacity-50"></i>
+                    </div>
+                    <p class="text-sm md:text-base px-6">Select a topic, then hold the mic to record.</p>
+                </div>
+            </div>
+
+            <div class="fixed bottom-0 left-0 w-full mobile-glass-bar p-4 lg:p-0 lg:static lg:bg-transparent lg:border-none lg:shadow-none z-40 transition-all duration-300">
+                <div class="max-w-6xl mx-auto flex flex-col items-center justify-center gap-3">
+                    
+                    <div id="statusText" class="text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-full shadow-sm opacity-0 transition-opacity">
+                        Listening...
+                    </div>
+                    
+                    <button id="micBtn" class="bg-slate-300 text-white w-16 h-16 md:w-20 md:h-20 rounded-full shadow-lg shadow-indigo-500/20 flex items-center justify-center transition-all cursor-not-allowed transform active:scale-95" disabled>
+                        <i class="fa-solid fa-microphone text-2xl md:text-3xl"></i>
+                    </button>
+                    
+                    <p class="text-[10px] md:text-xs text-slate-400 hidden lg:block">Recordings save automatically to Downloads</p>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <div id="settingsModal" class="fixed inset-0 bg-black/60 z-[70] hidden flex items-center justify-center backdrop-blur-sm px-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl transform transition-all scale-100" id="modalContent">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-slate-800">API Setup</h3>
+                <button onclick="document.getElementById('settingsModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <p class="text-sm text-slate-500 mb-4">Get your free API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-indigo-600 underline">Google AI Studio</a>.</p>
+            
+            <label class="block text-xs font-semibold text-slate-500 uppercase mb-2">Gemini API Key</label>
+            <input type="password" id="apiKeyInput" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 mb-6 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" placeholder="AIzaSy...">
+            
+            <button id="saveKeyBtn" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md active:scale-95 transition-transform">Start Practicing</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { GoogleGenerativeAI } from "@google/generative-ai";
+
+        // --- Configuration ---
+        const MODEL_NAME = "gemini-flash-latest"; // High quota model
+        
+        // --- State Management ---
+        const todayStr = new Date().toDateString();
+        let appState = {
+            apiKey: localStorage.getItem('gemini_api_key') || '',
+            level: parseInt(localStorage.getItem('user_level')) || 1,
+            streak: parseInt(localStorage.getItem('user_streak')) || 0,
+            lastPractice: localStorage.getItem('last_practice_date') || '',
+            dailyTopics: JSON.parse(localStorage.getItem('daily_topics_' + todayStr)) || [],
+            completedTopics: JSON.parse(localStorage.getItem('completed_topics_' + todayStr)) || []
+        };
+        
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
+        let chatSession = null;
+        let currentTopicIndex = -1;
+
+        // --- UI Elements ---
+        const micBtn = document.getElementById('micBtn');
+        const chatContainer = document.getElementById('chatContainer');
+        const topicsListEl = document.getElementById('topicsList');
+        const activeTopicText = document.getElementById('activeTopicText');
+        const streakCountEl = document.getElementById('streakCount');
+        const completedCountEl = document.getElementById('completedCount');
+        const levelBadgeEl = document.getElementById('levelBadge');
+        const practiceArea = document.getElementById('practiceArea');
+        
+        // --- Initialization ---
+        initApp();
+
+        function initApp() {
+            if (!appState.apiKey) {
+                document.getElementById('settingsModal').classList.remove('hidden');
+            } else {
+                checkStreakLogic();
+                loadDailyTopics();
+            }
+            updateStatsUI();
+        }
+
+        // --- 1. Streak & Level Logic ---
+        function checkStreakLogic() {
+            if (appState.lastPractice !== todayStr) {
+                const lastDate = new Date(appState.lastPractice);
+                const today = new Date(todayStr);
+                const diffTime = Math.abs(today - lastDate);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+
+                if (diffDays > 1 && appState.lastPractice !== '') {
+                    appState.streak = 0; // Broken streak
+                }
+            }
+        }
+
+        function incrementStreak() {
+            if (appState.lastPractice !== todayStr) {
+                appState.streak++;
+                appState.lastPractice = todayStr;
+                
+                if (appState.streak % 5 === 0) appState.level++;
+
+                saveState();
+                updateStatsUI();
+                addMessage("🔥 Streak increased! You are on fire!", 'ai');
+            }
+        }
+
+        function saveState() {
+            localStorage.setItem('user_level', appState.level);
+            localStorage.setItem('user_streak', appState.streak);
+            localStorage.setItem('last_practice_date', appState.lastPractice);
+            localStorage.setItem('daily_topics_' + todayStr, JSON.stringify(appState.dailyTopics));
+            localStorage.setItem('completed_topics_' + todayStr, JSON.stringify(appState.completedTopics));
+        }
+
+        function updateStatsUI() {
+            streakCountEl.innerText = appState.streak;
+            completedCountEl.innerText = `${appState.completedTopics.length}/5`;
+            levelBadgeEl.innerText = `Level ${appState.level}`;
+        }
+
+        // --- 2. Topic Generation ---
+        async function loadDailyTopics() {
+            if (appState.dailyTopics.length === 0) {
+                await generateDailyTopics();
+            } else {
+                renderTopicsList();
+            }
+        }
+
+        async function generateDailyTopics() {
+            topicsListEl.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><br>Creating new topics...</div>';
+
+            const genAI = new GoogleGenerativeAI(appState.apiKey);
+            const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+            
+            const levelContext = appState.level < 5 ? "Beginner (hobbies, family, food)" : 
+                                 appState.level < 15 ? "Intermediate (travel, work, culture)" : 
+                                 "Advanced (ethics, technology, abstract concepts)";
+
+            const prompt = `Generate 5 distinct, engaging English conversation topics for a ${levelContext} level student. 
+            Return ONLY the topics separated by a pipe character (|). Example: Topic 1|Topic 2|Topic 3|Topic 4|Topic 5. 
+            Do not use markdown. Do not use numbering.`;
+
+            try {
+                const result = await model.generateContent(prompt);
+                const text = result.response.text();
+                const topics = text.split('|').map(t => t.trim()).filter(t => t.length > 0).slice(0, 5);
+                
+                if (topics.length > 0) {
+                    appState.dailyTopics = topics;
+                    saveState();
+                    renderTopicsList(); 
+                }
+            } catch (error) {
+                console.error("Topic Gen Error", error);
+                appState.dailyTopics = ["Introduce yourself", "Talk about your favorite food", "Describe your job", "Your dream vacation", "Why learn English?"];
+                renderTopicsList(); 
+            }
+        }
+
+        function renderTopicsList() {
+            topicsListEl.innerHTML = '';
+            
+            appState.dailyTopics.forEach((topic, index) => {
+                const isDone = appState.completedTopics.includes(index);
+                const isActive = currentTopicIndex === index;
+                
+                const card = document.createElement('div');
+                card.className = `topic-card p-4 rounded-xl border border-slate-100 cursor-pointer flex items-center gap-3 shadow-sm bg-white active:bg-slate-50 ${isActive ? 'topic-active' : ''} ${isDone ? 'topic-done' : ''}`;
+                
+                card.innerHTML = `
+                    <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${isDone ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-400'}">
+                        <i class="fa-solid ${isDone ? 'fa-check' : 'fa-play text-xs'}"></i>
+                    </div>
+                    <div class="flex-grow text-sm font-medium text-slate-700 leading-tight">${topic}</div>
+                `;
+                
+                card.onclick = () => selectTopic(index);
+                topicsListEl.appendChild(card);
+            });
+            
+            if (appState.dailyTopics.length > 0 && currentTopicIndex === -1 && appState.completedTopics.length < 5) {
+                const firstUndone = appState.dailyTopics.findIndex((_, i) => !appState.completedTopics.includes(i));
+                if (firstUndone !== -1) selectTopic(firstUndone);
+            }
+            
+            if (appState.completedTopics.length >= 5) {
+                document.getElementById('bonusTopicBtn').classList.remove('hidden');
+            }
+        }
+
+        function selectTopic(index) {
+            currentTopicIndex = index;
+            activeTopicText.innerText = appState.dailyTopics[index];
+            renderTopicsList();
+            
+            // Activate Mic
+            micBtn.disabled = false;
+            micBtn.classList.remove('bg-slate-300', 'cursor-not-allowed');
+            micBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700', 'cursor-pointer');
+            
+            startChatSession(appState.dailyTopics[index]);
+            
+            // SMART SCROLL: On mobile, scroll to the chat area automatically
+            if (window.innerWidth < 1024) {
+                practiceArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        // --- 3. Chat & Recording ---
+        function startChatSession(topic) {
+            if (!appState.apiKey) return;
+            const genAI = new GoogleGenerativeAI(appState.apiKey);
+            const model = genAI.getGenerativeModel({ 
+                model: MODEL_NAME,
+                systemInstruction: `You are an English tutor. The topic is: "${topic}". 
+                1. Listen to the audio. If silent/noise, ask to try again.
+                2. If speech is clear, reply relevantly to the topic.
+                3. Mention all improvement (grammar/pronunciation).`
+            });
+
+            chatSession = model.startChat();
+            if (chatContainer.querySelector('.text-center')) chatContainer.innerHTML = '';
+        }
+
+        async function toggleRecording() {
+            if (!isRecording) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+                    audioChunks = [];
+
+                    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+                    mediaRecorder.onstop = async () => {
+                        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                        if (blob.size < 1000) {
+                            addMessage("❌ Too short. Speak longer.", 'ai', true);
+                            return;
+                        }
+                        
+                        downloadAudio(blob);
+                        await processAudio(blob);
+                        
+                        if (currentTopicIndex !== -1 && !appState.completedTopics.includes(currentTopicIndex)) {
+                            appState.completedTopics.push(currentTopicIndex);
+                            incrementStreak(); 
+                            saveState();
+                            updateStatsUI();
+                            renderTopicsList();
+                        }
+                        
+                        stream.getTracks().forEach(t => t.stop());
+                    };
+
+                    mediaRecorder.start();
+                    isRecording = true;
+                    micBtn.innerHTML = '<i class="fa-solid fa-stop text-2xl md:text-3xl"></i>';
+                    micBtn.classList.add('bg-rose-600', 'pulse-recording');
+                    micBtn.classList.remove('bg-indigo-600');
+                    document.getElementById('statusText').classList.remove('opacity-0');
+                } catch (err) {
+                    alert("Mic Error: " + err);
+                }
+            } else {
+                mediaRecorder.stop();
+                isRecording = false;
+                micBtn.innerHTML = '<i class="fa-solid fa-microphone text-2xl md:text-3xl"></i>';
+                micBtn.classList.remove('bg-rose-600', 'pulse-recording');
+                micBtn.classList.add('bg-indigo-600');
+                document.getElementById('statusText').classList.add('opacity-0');
+            }
+        }
+
+        async function processAudio(blob) {
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = async () => {
+                const base64 = reader.result.split(',')[1];
+                addMessage("🎤 [Audio Sent]", 'user');
+                
+                try {
+                    const result = await chatSession.sendMessage([
+                        { inlineData: { mimeType: "audio/webm", data: base64 } },
+                        { text: "Listen and reply." }
+                    ]);
+                    const text = result.response.text().replace(/\*\*/g, "");
+                    addMessage(text, 'ai');
+                } catch (e) {
+                    addMessage("Error: " + e.message, 'ai', true);
+                }
+            };
+        }
+
+        function downloadAudio(blob) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            const cleanTopic = activeTopicText.innerText.split(' ').slice(0,3).join('_').replace(/[^a-zA-Z0-9_]/g, '');
+            a.download = `FluencyAI_L${appState.level}_${cleanTopic}.webm`;
+            document.body.appendChild(a);
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function addMessage(text, sender, isError = false) {
+            const div = document.createElement('div');
+            const isUser = sender === 'user';
+            div.className = `flex ${isUser ? 'justify-end' : 'justify-start'} mb-4 animate-fade-in`;
+            div.innerHTML = `
+                <div class="${isUser ? 'bg-indigo-600 text-white' : (isError ? 'bg-red-100 text-red-600' : 'bg-white border border-slate-200 text-slate-700')} px-4 py-3 rounded-2xl max-w-[85%] shadow-sm text-sm">
+                    ${text}
+                </div>`;
+            chatContainer.appendChild(div);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        micBtn.addEventListener('click', toggleRecording);
+        
+        document.getElementById('saveKeyBtn').addEventListener('click', () => {
+            const key = document.getElementById('apiKeyInput').value.trim();
+            if (key) {
+                localStorage.setItem('gemini_api_key', key);
+                appState.apiKey = key;
+                document.getElementById('settingsModal').classList.add('hidden');
+                initApp();
+            }
+        });
+
+        document.getElementById('settingsBtn').addEventListener('click', () => {
+            document.getElementById('settingsModal').classList.remove('hidden');
+            document.getElementById('apiKeyInput').value = appState.apiKey;
+        });
+
+        document.getElementById('refreshTopicsBtn').addEventListener('click', () => {
+            if(confirm("Generate new topics?")) {
+                generateDailyTopics();
+            }
+        });
+        
+        document.getElementById('bonusTopicBtn').addEventListener('click', () => {
+             appState.dailyTopics.push("Bonus: Talk about what you learned today");
+             renderTopicsList();
+        });
+
+        // Add Animations
+        const style = document.createElement('style');
+        style.textContent = `
+            .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; opacity: 0; transform: translateY(10px); }
+            @keyframes fadeIn { to { opacity: 1; transform: translateY(0); } }
+        `;
+        document.head.appendChild(style);
+
+    </script>
+</body>
+</html>
