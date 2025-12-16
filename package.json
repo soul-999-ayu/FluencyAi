@@ -2,6 +2,6 @@
   "name": "fluency-ai",
   "version": "1.0.0",
   "dependencies": {
-    "edge-tts": "^1.1.0"
+    "ms-edge-tts": "^1.4.2"
   }
 }

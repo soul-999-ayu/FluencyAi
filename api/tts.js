@@ -1,8 +1,7 @@
-// api/tts.js
-import { EdgeTTS } from 'edge-tts';
+import { MsEdgeTTS, OUTPUT_FORMAT } from 'ms-edge-tts';
 
 export default async function handler(req, res) {
-  // Only allow POST requests
+  // 1. Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -13,24 +12,24 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Text is required' });
   }
 
-  // Select voice: 'en-US-AriaNeural' (Female) or 'en-US-GuyNeural' (Male)
-  // You can pass this from the frontend or default it here
-  const selectedVoice = voice || 'en-US-AriaNeural'; 
-
   try {
-    const tts = new EdgeTTS({
-      voice: selectedVoice,
-      text: text,
-    });
+    // 2. Initialize the TTS engine
+    const tts = new MsEdgeTTS();
+    
+    // 3. Set Voice (Default to Aria if none provided) and Format
+    await tts.setMetadata(
+      voice || "en-US-AriaNeural", 
+      OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3
+    );
 
-    const buffer = await tts.ttsPromise();
-
-    // Send the audio file back to the browser
+    // 4. Create a stream and pipe it directly to the response
+    const readable = await tts.toStream(text);
+    
     res.setHeader('Content-Type', 'audio/mp3');
-    res.send(buffer);
+    readable.pipe(res);
 
   } catch (error) {
-    console.error(error);
+    console.error("TTS Generation Error:", error);
     res.status(500).json({ error: 'Failed to generate speech' });
   }
 }
